@@ -28,10 +28,11 @@ https://github.com/UncleBarney/CS502-1701/issues/156
 	dump b;
 ```
 
---1.txt
+- 1.txt
+------
 a=15 b=17 c=20 and somthing else
 a=18 bla bla
---
+------
 STRING_SEARCH结果: {(15),(17),(20)}, {(18)}
 
 ## Explanation from Mr.Dai
