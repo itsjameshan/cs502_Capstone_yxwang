@@ -29,11 +29,11 @@ https://github.com/UncleBarney/CS502-1701/issues/156
 ```
 
 - 1.txt
-------
+```
 a=15 b=17 c=20 and somthing else
 a=18 bla bla
-------
-STRING_SEARCH结果: {(15),(17),(20)}, {(18)}
+```
+STRING_SEARCH结果: ```{(15),(17),(20)}, {(18)}```
 
 ## Explanation from Mr.Dai
     就是一个高级的string search, 只不过你用regex表达你要search的东西, 基本上就是吧REGEX_EXTRACT_ALL改一下(改exec改写一下就行了), 要会用java regex的类和函数(https://www.tutorialspoint.com/java/java_regular_expressions.htm)
