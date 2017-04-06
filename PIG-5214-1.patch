@@ -1,0 +1,225 @@
+commit 8999ed22fbb401652ba912f6964a34643befa00d
+Author: kuroega <452262812@qq.com>
+Date:   Wed Apr 5 02:39:21 2017 -0400
+
+    Added a New UDF named STRING_SEARCH_ALL and also updated builtin test file
+
+diff --git a/build.xml b/build.xml
+index e70aa9979..307b86387 100644
+--- a/build.xml
++++ b/build.xml
+@@ -312,7 +312,7 @@
+     </target>
+ 
+     <target name="eclipse-files"
+-            depends="init,ant-eclipse-download,ivy-compile,ivy-test"
++            depends="compile-test,ant-eclipse-download"
+             description="Create eclipse project files">
+         <pathconvert property="eclipse.project">
+             <path path="${basedir}"/>
+@@ -336,7 +336,7 @@
+                 <source path="${src.shims.dir}"/>
+                 <source path="${src.shims.test.dir}"/>
+                 <source path="tutorial/src"/>
+-                <source path="${test.src.dir}" excluding="e2e/pig/udfs/java/|resources/"/>
++                <source path="${test.src.dir}" excluding="e2e/pig/udfs/java/|resources/|perf/"/>
+                 <output path="${build.dir.eclipse-main-classes}" />
+                 <library pathref="eclipse.classpath" exported="true" />
+                 <!--library pathref="classpath" exported="false"/-->
+@@ -391,7 +391,6 @@
+         <mkdir dir="${test.build.classes}" />
+         <mkdir dir="${src.gen.dot.parser.dir}" />
+         <mkdir dir="${src.gen.textdata.parser.dir}" />
+-        <move file="${ivy.lib.dir}/javacc-${javacc.version}.jar" tofile="${javacc.home}/javacc.jar"/>
+         <tstamp>
+             <format property="timestamp" pattern="MMM dd yyyy, HH:mm:ss" />
+         </tstamp>
+@@ -474,11 +473,13 @@
+     <!-- Java Compiler Compiler, generate Parsers                           -->
+     <!-- ================================================================== -->
+     <target name="cc-compile" depends="init, ivy-compile" description="Create and Compile Parser">
++        <move file="${ivy.lib.dir}/javacc-${javacc.version}.jar" tofile="${javacc.home}/javacc.jar"/>
+         <javacc target="${src.dir}/org/apache/pig/tools/pigscript/parser/PigScriptParser.jj" outputdirectory="${src.gen.script.parser.dir}" javacchome="${javacc.home}" />
+         <javacc target="${src.dir}/org/apache/pig/tools/parameters/PigFileParser.jj" outputdirectory="${src.gen.param.parser.dir}" javacchome="${javacc.home}" />
+         <javacc target="${src.dir}/org/apache/pig/tools/parameters/ParamLoader.jj" outputdirectory="${src.gen.param.parser.dir}" javacchome="${javacc.home}" />
+         <jjtree target="${test.src.dir}/org/apache/pig/test/utils/dotGraph/DOTParser.jjt" outputdirectory="${src.gen.dot.parser.dir}" javacchome="${javacc.home}" />
+         <javacc target="${src.gen.dot.parser.dir}/DOTParser.jj" outputdirectory="${src.gen.dot.parser.dir}" javacchome="${javacc.home}" />
++        <move file="${javacc.home}/javacc.jar" tofile="${ivy.lib.dir}/javacc-${javacc.version}.jar"/>
+     </target>
+ 
+     <target name="gen" depends="genTreeParser"
+diff --git a/src/org/apache/pig/builtin/STRING_SEARCH_ALL.java b/src/org/apache/pig/builtin/STRING_SEARCH_ALL.java
+new file mode 100644
+index 000000000..870a950e8
+--- /dev/null
++++ b/src/org/apache/pig/builtin/STRING_SEARCH_ALL.java
+@@ -0,0 +1,100 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.pig.builtin;
++
++import java.io.IOException;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++import org.apache.pig.EvalFunc;
++import org.apache.pig.data.DataType;
++import org.apache.pig.data.*;
++import org.apache.pig.impl.logicalLayer.schema.Schema;
++
++
++public class STRING_SEARCH_ALL extends EvalFunc<DataBag> {
++	private static BagFactory bagFactory = BagFactory.getInstance();
++	private static TupleFactory tupleFactory = TupleFactory.getInstance();
++	boolean mUseMatches = false;
++
++	public STRING_SEARCH_ALL() {}
++
++	public STRING_SEARCH_ALL(String useMatches) {
++		this.mUseMatches = Boolean.parseBoolean(useMatches);
++	}
++
++	@Override
++	public DataBag exec(Tuple input) throws IOException {
++
++		if (input == null || input.size() < 1) {
++			return null;
++		}
++		if (input.get(0)==null)
++            return null;
++		// define Regex_Expression and Pattern to be recognized
++		// let's first split the each line of string by delimiter we defined
++		try {
++			if (!input.get(1).equals(mExpression)) {
++                try {
++                    mExpression = "(" + (String)input.get(1) + ")";
++                    mPattern = Pattern.compile(mExpression);
++                } catch (Exception e) {
++                    String msg = "StringSearchAll : Mal-Formed Regular expression : "+input.get(1);
++                    throw new IOException(msg);
++                }
++             }
++		} catch (NullPointerException e) {
++            String msg = "StringSearchAll : Regular expression is null";
++            throw new IOException(msg);
++        }
++        Matcher m = mPattern.matcher((String)input.get(0));
++        if (mUseMatches&&!m.matches()||!mUseMatches&&!m.find()) {
++            return null;
++        }
++        //create a bag and put tuple in the bag
++        Tuple tuple0 = tupleFactory.newTuple(1);
++        tuple0.set(0, m.group(1));
++        DataBag dataBag = bagFactory.newDefaultBag();
++        dataBag.add(tuple0);
++        while (m.find()) {
++            Tuple tuple = tupleFactory.newTuple(1);
++            tuple.set(0, m.group(1));
++            dataBag.add(tuple);
++        }
++        return dataBag;
++    }
++
++    String mExpression = null;
++    Pattern mPattern = null;
++    @Override
++    public Schema outputSchema(Schema input) {
++        try {
++            return new Schema(new Schema.FieldSchema(null, DataType.BAG));
++        } catch (Exception e) {
++            return null;
++        }
++    }
++
++    @Override
++    public boolean allowCompileTimeCalculation() {
++        return true;
++    }
++
++// output format: put every matched pattern into individual Tuples within a Bag.
++
++}
+diff --git a/test/org/apache/pig/test/TestBuiltin.java b/test/org/apache/pig/test/TestBuiltin.java
+index fbc3f1e03..299fb32ff 100644
+--- a/test/org/apache/pig/test/TestBuiltin.java
++++ b/test/org/apache/pig/test/TestBuiltin.java
+@@ -96,6 +96,7 @@ import org.apache.pig.builtin.ROUND_TO;
+ import org.apache.pig.builtin.RTRIM;
+ import org.apache.pig.builtin.SIZE;
+ import org.apache.pig.builtin.SPRINTF;
++import org.apache.pig.builtin.STRING_SEARCH_ALL;
+ import org.apache.pig.builtin.STRSPLIT;
+ import org.apache.pig.builtin.SUBSTRING;
+ import org.apache.pig.builtin.SecondsBetween;
+@@ -1993,6 +1994,56 @@ public class TestBuiltin {
+ 
+         re = funce.exec(te3);
+         assertTrue(re==null);
++
++     // *** STRING_SEARCH_ALL *** start
++        String matchSearch = "=\\d+\\s";
++        BagFactory bagFactory = BagFactory.getInstance();
++        tupleFactory = TupleFactory.getInstance();
++        Tuple ts1 = tupleFactory.newTuple(2);
++        ts1.set(0, "a=04 b=06 c=96 or more");
++        ts1.set(1, matchSearch);
++
++        Tuple ts2 = tupleFactory.newTuple(2);
++        ts2.set(0, "a is 04 b is 06");
++        ts2.set(1, matchSearch);
++
++        Tuple ts3 = tupleFactory.newTuple(2);
++        ts3.set(0, null);
++        ts3.set(1, matchSearch);
++
++        STRING_SEARCH_ALL funcs = new STRING_SEARCH_ALL();
++        DataBag reb = funcs.exec(ts1);
++        DataBag b = Util.createBag(new Tuple[]{Util.buildTuple("=04 "), Util.buildTuple("=06 "), Util.buildTuple("=96 ")});
++        assertEquals(b, reb);
++
++        reb = funcs.exec(ts2);
++        assertTrue(reb==null);
++
++        reb = funcs.exec(ts3);
++        assertTrue(reb==null);
++
++        matchSearch = "\\w.+?";
++        tupleFactory = TupleFactory.getInstance();
++        ts1 = tupleFactory.newTuple(2);
++        ts1.set(0, "a=04 b=06 c=96");
++        ts1.set(1, matchSearch);
++
++        funcs = new STRING_SEARCH_ALL();
++        reb = funcs.exec(ts1);
++        b = Util.createBag(new Tuple[]{Util.buildTuple("a="), Util.buildTuple("04"), Util.buildTuple("b="), Util.buildTuple("06"), Util.buildTuple("c="), Util.buildTuple("96")});
++        assertEquals(b, reb);
++
++        // LAZY MODE
++        funcs = new STRING_SEARCH_ALL("True");
++        reb = funcs.exec(ts1);
++        b = Util.createBag(new Tuple[]{Util.buildTuple("a=04 b=06 c=96")});
++        assertEquals(b, reb);
++
++        reb = funcs.exec(ts2);
++        assertTrue(reb==null);
++
++        reb = funcs.exec(ts3);
++        assertTrue(reb==null);
+     }
+ 
+     @Test
