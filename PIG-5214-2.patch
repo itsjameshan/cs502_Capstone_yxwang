@@ -1,0 +1,235 @@
+commit 76b44bcfe9cadb94cc5dba8a0def8f51c960ed7d
+Author: kuroega <452262812@qq.com>
+Date:   Sun Apr 9 12:01:22 2017 -0400
+
+    Added udf, test, docs- final
+
+diff --git a/src/docs/src/documentation/content/xdocs/func.xml b/src/docs/src/documentation/content/xdocs/func.xml
+index d792a2a26..625f08c3c 100644
+--- a/src/docs/src/documentation/content/xdocs/func.xml
++++ b/src/docs/src/documentation/content/xdocs/func.xml
+@@ -4352,7 +4352,68 @@ REGEX_EXTRACT_ALL('192.168.1.5:8020', '(.*)\:(.*)');
+ </section>
+ 
+ 
+-<!-- ======================================================== -->  
++<!-- ======================================================== -->
++ <section id="regex-search">
++   <title>REGEX_SEARCH</title>
++   <p>Performs regular expression matching and searches all matched characters in a string.</p>
++
++<section>
++   <title>Syntax</title>
++   <table>
++       <tr>
++            <td>
++               <p>REGEX_SEARCH(string, 'regExp');</p>
++            </td>
++       </tr>
++   </table>
++ </section>
++
++<section>
++   <title>Terms</title>
++   <table>
++         <tr>
++            <td>
++               <p>string</p>
++            </td>
++            <td>
++               <p>The string in which to perform the match.</p>
++            </td>
++         </tr>
++               <tr>
++            <td>
++               <p>'regExp'</p>
++            </td>
++            <td>
++               <p>The regular expression to which the string is to be matched, in quotes.</p>
++            </td>
++         </tr>
++   </table>
++</section>
++
++<section>
++   <title>Usage</title>
++   <p>
++Use the REGEX_SEARCH function to perform regular expression matching and to find all matched characters in a string.
++   </p>
++   <p>
++The function returns tuples which are placed in a bag. Each tuple only contains one field which represents a matched expression.
++   </p>
++</section>
++
++<section>
++   <title>Example</title>
++   <p>
++This is example will return the bag {(=04 ),(=06 ),(=96 )}.
++   </p>
++<source>
++REGEX_SEARCH('a=04 b=06 c=96 or more', '(=\\d+\\s)');
++</source>
++
++ </section>
++</section>
++
++
++<!-- ======================================================== -->
+  <section id="replace">
+    <title>REPLACE</title>
+    <p>Replaces existing characters in a string with new characters.</p>
+diff --git a/src/org/apache/pig/builtin/REGEX_SEARCH.java b/src/org/apache/pig/builtin/REGEX_SEARCH.java
+new file mode 100644
+index 000000000..2c6ee747a
+--- /dev/null
++++ b/src/org/apache/pig/builtin/REGEX_SEARCH.java
+@@ -0,0 +1,104 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.pig.builtin;
++
++import java.io.IOException;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++import org.apache.pig.EvalFunc;
++import org.apache.pig.data.*;
++import org.apache.pig.impl.logicalLayer.schema.Schema;
++import org.apache.pig.impl.util.*;
++
++/**
++ * Search and find all matched characters in a string with a given
++ * regular expression.
++ *
++ * Example:
++ *
++ * a = LOAD 'mydata' AS (name:chararray);
++ * b = FOREACH A GENERATE REGEX_SEARCH(name, 'regEx');
++ *
++ * input tuple: the first field is a string on which performs regular expression matching;
++ * the second field is the regular expression;
++ */
++
++public class REGEX_SEARCH extends EvalFunc<DataBag> {
++	private static BagFactory bagFactory = BagFactory.getInstance();
++	private static TupleFactory tupleFactory = TupleFactory.getInstance();
++
++    public REGEX_SEARCH() {}
++
++	@Override
++	public DataBag exec(Tuple input) throws IOException {
++
++		if (input == null || input.size() < 1) {
++			return null;
++		}
++		if (input.get(0)==null)
++            return null;
++
++		try {
++			if (!input.get(1).equals(mExpression)) {
++                try {
++                    mExpression = (String)input.get(1);
++                    mPattern = Pattern.compile(mExpression);
++                } catch (Exception e) {
++                    String msg = "StringSearchAll : Mal-Formed Regular expression : "+input.get(1);
++                    throw new IOException(msg);
++                }
++             }
++        } catch (NullPointerException e) {
++            String msg = "StringSearchAll : Regular expression is null";
++            throw new IOException(msg);
++        }
++        Matcher m = mPattern.matcher((String)input.get(0));
++        if (!m.find()) {
++            return null;
++        }
++
++        Tuple tuple0 = tupleFactory.newTuple(1);
++        tuple0.set(0, m.group(1));
++        DataBag dataBag = bagFactory.newDefaultBag();
++        dataBag.add(tuple0);
++        while (m.find()) {
++            Tuple tuple = tupleFactory.newTuple(1);
++            tuple.set(0, m.group(1));
++            dataBag.add(tuple);
++        }
++        return dataBag;
++    }
++
++    String mExpression = null;
++    Pattern mPattern = null;
++    @Override
++    public Schema outputSchema(Schema input) {
++        try {
++            return new Schema(Utils.getSchemaFromString("{(match:chararray)}"));
++        } catch (Exception e) {
++            throw new RuntimeException(e);
++        }
++    }
++
++    @Override
++    public boolean allowCompileTimeCalculation() {
++        return true;
++    }
++
++}
+diff --git a/test/org/apache/pig/test/TestBuiltin.java b/test/org/apache/pig/test/TestBuiltin.java
+index fbc3f1e03..05c7ca678 100644
+--- a/test/org/apache/pig/test/TestBuiltin.java
++++ b/test/org/apache/pig/test/TestBuiltin.java
+@@ -96,6 +96,7 @@ import org.apache.pig.builtin.ROUND_TO;
+ import org.apache.pig.builtin.RTRIM;
+ import org.apache.pig.builtin.SIZE;
+ import org.apache.pig.builtin.SPRINTF;
++import org.apache.pig.builtin.REGEX_SEARCH;
+ import org.apache.pig.builtin.STRSPLIT;
+ import org.apache.pig.builtin.SUBSTRING;
+ import org.apache.pig.builtin.SecondsBetween;
+@@ -1993,6 +1994,32 @@ public class TestBuiltin {
+ 
+         re = funce.exec(te3);
+         assertTrue(re==null);
++
++        // *** REGEX_SEARCH *** start
++        String matchSearch = "(=\\d+\\s)";
++        tupleFactory = TupleFactory.getInstance();
++        Tuple ts1 = tupleFactory.newTuple(2);
++        ts1.set(0, "a=04 b=06 c=96 or more");
++        ts1.set(1, matchSearch);
++
++        Tuple ts2 = tupleFactory.newTuple(2);
++        ts2.set(0, "a is 04 b is 06");
++        ts2.set(1, matchSearch);
++
++        Tuple ts3 = tupleFactory.newTuple(2);
++        ts3.set(0, null);
++        ts3.set(1, matchSearch);
++
++        REGEX_SEARCH funcs = new REGEX_SEARCH();
++        DataBag reb = funcs.exec(ts1);
++        DataBag b = Util.createBag(new Tuple[]{Util.buildTuple("=04 "), Util.buildTuple("=06 "), Util.buildTuple("=96 ")});
++        assertEquals(b, reb);
++
++        reb = funcs.exec(ts2);
++        assertTrue(reb==null);
++
++        reb = funcs.exec(ts3);
++        assertTrue(reb==null);
+     }
+ 
+     @Test
